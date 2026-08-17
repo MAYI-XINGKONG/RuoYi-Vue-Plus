@@ -98,6 +98,13 @@
             <artifactId>ruoyi-demo</artifactId>
         </dependency>
 
+        <!--  自动化测试模块  -->
+        <dependency>
+            <groupId>org.dromara</groupId>
+            <artifactId>ruoyi-test</artifactId>
+            <version>6.0.0</version>
+        </dependency>
+
         <!--  工作流模块  -->
         <dependency>
             <groupId>org.dromara</groupId>

@@ -28,10 +28,10 @@
             <artifactId>spring-boot-web-server</artifactId>
         </dependency>
 
-        <!-- 接口文档 -->
+        <!-- 接口文档 (含 Swagger UI) -->
         <dependency>
             <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>
 
         <!-- JavaDoc 运行时读取 -->

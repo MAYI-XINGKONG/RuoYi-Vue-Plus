@@ -321,3 +321,7 @@ justauth:
       client-id: 10**********6
       client-secret: 1f7d08**********5b7**********29e
       redirect-uri: ${justauth.address}/social-callback?source=gitea
+
+--- # 自动化测试配置
+autotest:
+  e2e-path: ../e2e-test
