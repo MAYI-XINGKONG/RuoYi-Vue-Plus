@@ -321,3 +321,16 @@ justauth:
       client-id: 10**********6
       client-secret: 1f7d08**********5b7**********29e
       redirect-uri: ${justauth.address}/social-callback?source=gitea
+
+oss:
+  minio:
+    endpoint: http://127.0.0.1:9000
+    accessKey: minioadmin
+    secretKey: minioadmin
+    bucketName: snail-ai
+    pathStyle: true
+
+--- # E2E自动化测试配置
+e2e:
+  base-path: ../e2e-test
+  max-concurrency: 3

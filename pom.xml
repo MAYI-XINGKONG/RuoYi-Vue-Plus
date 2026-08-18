@@ -457,6 +457,13 @@
                 <version>${revision}</version>
             </dependency>
 
+            <!-- E2E测试管理模块 -->
+            <dependency>
+                <groupId>org.dromara</groupId>
+                <artifactId>ruoyi-e2e</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
         </dependencies>
     </dependencyManagement>
 

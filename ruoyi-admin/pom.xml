@@ -104,6 +104,12 @@
             <artifactId>ruoyi-workflow</artifactId>
         </dependency>
 
+        <!-- E2E测试管理模块 -->
+        <dependency>
+            <groupId>org.dromara</groupId>
+            <artifactId>ruoyi-e2e</artifactId>
+        </dependency>
+
         <!-- Spring Boot Admin 客户端 -->
         <dependency>
             <groupId>de.codecentric</groupId>
