@@ -36,7 +36,6 @@ public class E2eTestCaseBo implements Serializable {
     /**
      * spec文件路径
      */
-    @NotBlank(message = "spec文件路径不能为空")
     @Size(max = 500, message = "spec文件路径长度不能超过{max}个字符")
     private String specFile;
 
@@ -51,6 +50,11 @@ public class E2eTestCaseBo implements Serializable {
      */
     @Size(max = 500, message = "用例描述长度不能超过{max}个字符")
     private String description;
+
+    /**
+     * 用例代码内容
+     */
+    private String content;
 
     /**
      * 状态

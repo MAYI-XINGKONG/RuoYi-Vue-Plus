@@ -125,6 +125,22 @@ public class E2eTestTaskServiceImpl implements IE2eTestTaskService {
             running.setStartTime(LocalDateTime.now());
             testTaskMapper.updateById(running);
 
+            // 将DB中的用例内容写入spec文件，确保执行时文件内容是最新的
+            List<String> tempFiles = new ArrayList<>();
+            if (caseIds != null && !caseIds.isEmpty()) {
+                List<E2eTestCase> cases = testCaseMapper.selectBatchIds(caseIds);
+                for (E2eTestCase tc : cases) {
+                    if (tc.getContent() != null && !tc.getContent().isEmpty()) {
+                        String resolvedBase = e2eProperties.getResolvedBasePath();
+                        Path filePath = Paths.get(resolvedBase, tc.getSpecFile());
+                        Files.createDirectories(filePath.getParent());
+                        Files.writeString(filePath, tc.getContent(), StandardCharsets.UTF_8);
+                        tempFiles.add(filePath.toString());
+                        log.debug("已将用例内容写入文件: {}", filePath);
+                    }
+                }
+            }
+
             // 构建命令: cmd /c npx playwright test --reporter=html,json ...
             List<String> command = buildCommand(browser, headed, caseIds, basePath);
             log.info("执行E2E测试命令: {}", String.join(" ", command));

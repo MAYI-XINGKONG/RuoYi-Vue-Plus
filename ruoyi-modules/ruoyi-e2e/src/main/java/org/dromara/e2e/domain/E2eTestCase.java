@@ -47,6 +47,11 @@ public class E2eTestCase extends BaseEntity {
     private String description;
 
     /**
+     * 用例代码内容
+     */
+    private String content;
+
+    /**
      * 状态
      */
     private String status;

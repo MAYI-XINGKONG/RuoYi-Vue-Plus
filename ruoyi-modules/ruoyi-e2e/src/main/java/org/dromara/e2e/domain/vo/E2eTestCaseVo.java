@@ -44,6 +44,11 @@ public class E2eTestCaseVo implements Serializable {
     private String description;
 
     /**
+     * 用例代码内容
+     */
+    private String content;
+
+    /**
      * 状态
      */
     private String status;

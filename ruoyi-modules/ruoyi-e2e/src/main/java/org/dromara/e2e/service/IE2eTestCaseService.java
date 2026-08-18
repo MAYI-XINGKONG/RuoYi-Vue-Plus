@@ -3,6 +3,7 @@ package org.dromara.e2e.service;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.e2e.domain.bo.E2eTestCaseBo;
+import org.dromara.e2e.domain.vo.E2eTestCaseHistoryVo;
 import org.dromara.e2e.domain.vo.E2eTestCaseVo;
 
 import java.util.List;
@@ -59,26 +60,42 @@ public interface IE2eTestCaseService {
     void syncSpecFiles();
 
     /**
-     * 读取spec文件内容
-     *
-     * @param specFile 文件路径
-     * @return 文件内容
-     */
-    String readSpecFileContent(String specFile);
-
-    /**
-     * 保存spec文件内容
-     *
-     * @param specFile 文件路径
-     * @param content  文件内容
-     */
-    void saveSpecFileContent(String specFile, String content);
-
-    /**
      * 根据分组查询测试用例列表
      *
      * @param caseGroup 用例分组
      * @return 测试用例列表
      */
     List<E2eTestCaseVo> selectTestCaseByGroup(String caseGroup);
+
+    /**
+     * 查询用例历史版本
+     *
+     * @param caseId 用例ID
+     * @return 历史版本列表
+     */
+    List<E2eTestCaseHistoryVo> selectCaseHistory(Long caseId);
+
+    /**
+     * 根据历史ID查询历史版本
+     *
+     * @param historyId 历史ID
+     * @return 历史版本信息
+     */
+    E2eTestCaseHistoryVo selectHistoryById(Long historyId);
+
+    /**
+     * 回退到指定版本
+     *
+     * @param caseId    用例ID
+     * @param historyId 历史版本ID
+     */
+    void revertToVersion(Long caseId, Long historyId);
+
+    /**
+     * 仅更新用例内容（不影响名称等元数据）
+     *
+     * @param caseId 用例ID
+     * @param content 用例代码内容
+     */
+    void updateCaseContent(Long caseId, String content);
 }

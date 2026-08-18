@@ -11,8 +11,11 @@ import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.e2e.config.E2eProperties;
 import org.dromara.e2e.domain.E2eTestCase;
+import org.dromara.e2e.domain.E2eTestCaseHistory;
 import org.dromara.e2e.domain.bo.E2eTestCaseBo;
+import org.dromara.e2e.domain.vo.E2eTestCaseHistoryVo;
 import org.dromara.e2e.domain.vo.E2eTestCaseVo;
+import org.dromara.e2e.mapper.E2eTestCaseHistoryMapper;
 import org.dromara.e2e.mapper.E2eTestCaseMapper;
 import org.dromara.e2e.service.IE2eTestCaseService;
 import org.springframework.stereotype.Service;
@@ -23,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -36,6 +40,7 @@ import java.util.regex.Pattern;
 public class E2eTestCaseServiceImpl implements IE2eTestCaseService {
 
     private final E2eTestCaseMapper testCaseMapper;
+    private final E2eTestCaseHistoryMapper testCaseHistoryMapper;
     private final E2eProperties e2eProperties;
 
     /**
@@ -66,27 +71,23 @@ public class E2eTestCaseServiceImpl implements IE2eTestCaseService {
             String group = (bo.getCaseGroup() != null && !bo.getCaseGroup().isEmpty()) ? bo.getCaseGroup() : "default";
             bo.setSpecFile("tests/" + group + "/" + safeName + ".spec.ts");
         }
-        // Create file on disk with template
-        String basePath = e2eProperties.getResolvedBasePath();
-        Path filePath = Paths.get(basePath, bo.getSpecFile());
-        if (!Files.exists(filePath)) {
-            try {
-                Files.createDirectories(filePath.getParent());
-                String group = bo.getCaseGroup() != null ? bo.getCaseGroup() : "default";
-                String template = "import { test, expect } from '@playwright/test';\n\n"
-                    + "test.describe('" + group + "', () => {\n"
-                    + "  test('" + bo.getCaseName() + "', async ({ page }) => {\n"
-                    + "    // TODO: 编写测试步骤\n"
-                    + "    await expect(page).toHaveTitle(/.*/);\n"
-                    + "  });\n"
-                    + "});\n";
-                Files.writeString(filePath, template, java.nio.charset.StandardCharsets.UTF_8);
-            } catch (java.io.IOException e) {
-                log.error("创建spec文件失败: {}", filePath, e);
-            }
+        // Auto-generate content template if not provided
+        if (bo.getContent() == null || bo.getContent().isEmpty()) {
+            String group = bo.getCaseGroup() != null ? bo.getCaseGroup() : "default";
+            bo.setContent("import { test, expect } from '@playwright/test';\n\n"
+                + "test.describe('" + group + "', () => {\n"
+                + "  test('" + bo.getCaseName() + "', async ({ page }) => {\n"
+                + "    // TODO: 编写测试步骤\n"
+                + "    await expect(page).toHaveTitle(/.*/);\n"
+                + "  });\n"
+                + "});\n");
         }
         E2eTestCase testCase = MapstructUtils.convert(bo, E2eTestCase.class);
-        return testCaseMapper.insert(testCase);
+        int rows = testCaseMapper.insert(testCase);
+        if (rows > 0 && testCase.getContent() != null) {
+            saveHistory(testCase.getCaseId(), testCase.getContent(), 1);
+        }
+        return rows;
     }
 
     /**
@@ -94,8 +95,111 @@ public class E2eTestCaseServiceImpl implements IE2eTestCaseService {
      */
     @Override
     public int updateTestCase(E2eTestCaseBo bo) {
+        // 名称或分组变化时，同步更新specFile
+        if (bo.getCaseName() != null || bo.getCaseGroup() != null) {
+            E2eTestCaseVo old = testCaseMapper.selectVoById(bo.getCaseId());
+            if (old != null) {
+                String name = bo.getCaseName() != null ? bo.getCaseName() : old.getCaseName();
+                String group = bo.getCaseGroup() != null ? bo.getCaseGroup() : old.getCaseGroup();
+                if (group == null || group.isEmpty()) group = "default";
+                String safeName = name.replaceAll("[^a-zA-Z0-9\\u4e00-\\u9fa5]+", "-").replaceAll("^-+|-+$", "");
+                bo.setSpecFile("tests/" + group + "/" + safeName + ".spec.ts");
+            }
+        }
         E2eTestCase testCase = MapstructUtils.convert(bo, E2eTestCase.class);
-        return testCaseMapper.updateById(testCase);
+        int rows = testCaseMapper.updateById(testCase);
+        if (rows > 0 && bo.getContent() != null) {
+            int maxVer = 0;
+            E2eTestCaseHistory latest = testCaseHistoryMapper.lambda()
+                .eq(E2eTestCaseHistory::getCaseId, bo.getCaseId())
+                .orderByDesc(E2eTestCaseHistory::getVersion)
+                .last("LIMIT 1")
+                .one();
+            if (latest != null && latest.getVersion() != null) {
+                maxVer = latest.getVersion();
+            }
+            saveHistory(bo.getCaseId(), bo.getContent(), maxVer + 1);
+        }
+        return rows;
+    }
+
+    /**
+     * 保存历史版本
+     */
+    private void saveHistory(Long caseId, String content, int version) {
+        E2eTestCaseHistory history = new E2eTestCaseHistory();
+        history.setCaseId(caseId);
+        history.setContent(content);
+        history.setVersion(version);
+        history.setCreateTime(LocalDateTime.now());
+        testCaseHistoryMapper.insert(history);
+    }
+
+    /**
+     * 查询用例历史版本
+     */
+    @Override
+    public List<E2eTestCaseHistoryVo> selectCaseHistory(Long caseId) {
+        return testCaseHistoryMapper.lambda()
+            .eq(E2eTestCaseHistory::getCaseId, caseId)
+            .orderByDesc(E2eTestCaseHistory::getVersion)
+            .voList();
+    }
+
+    /**
+     * 根据历史ID查询历史版本
+     */
+    @Override
+    public E2eTestCaseHistoryVo selectHistoryById(Long historyId) {
+        return testCaseHistoryMapper.selectVoById(historyId);
+    }
+
+    /**
+     * 回退到指定版本
+     */
+    @Override
+    public void revertToVersion(Long caseId, Long historyId) {
+        E2eTestCaseHistoryVo history = testCaseHistoryMapper.selectVoById(historyId);
+        if (history != null) {
+            E2eTestCase update = new E2eTestCase();
+            update.setCaseId(caseId);
+            update.setContent(history.getContent());
+            testCaseMapper.updateById(update);
+            // Save as new version
+            int maxVer = 0;
+            E2eTestCaseHistory latest = testCaseHistoryMapper.lambda()
+                .eq(E2eTestCaseHistory::getCaseId, caseId)
+                .orderByDesc(E2eTestCaseHistory::getVersion)
+                .last("LIMIT 1")
+                .one();
+            if (latest != null && latest.getVersion() != null) {
+                maxVer = latest.getVersion();
+            }
+            saveHistory(caseId, history.getContent(), maxVer + 1);
+        }
+    }
+
+    /**
+     * 仅更新用例内容（不影响名称等元数据）
+     */
+    @Override
+    public void updateCaseContent(Long caseId, String content) {
+        E2eTestCase update = new E2eTestCase();
+        update.setCaseId(caseId);
+        update.setContent(content);
+        testCaseMapper.updateById(update);
+
+        // 保存历史版本
+        int maxVer = 0;
+        E2eTestCaseHistory latest = testCaseHistoryMapper.lambda()
+            .eq(E2eTestCaseHistory::getCaseId, caseId)
+            .orderByDesc(E2eTestCaseHistory::getVersion)
+            .last("LIMIT 1")
+            .one();
+        if (latest != null && latest.getVersion() != null) {
+            maxVer = latest.getVersion();
+        }
+        saveHistory(caseId, content, maxVer + 1);
     }
 
     /**
@@ -173,6 +277,7 @@ public class E2eTestCaseServiceImpl implements IE2eTestCaseService {
                     testCase.setCaseName(caseName);
                     testCase.setSpecFile(relativePath);
                     testCase.setCaseGroup(caseGroup);
+                    testCase.setContent(content);
                     testCase.setStatus("0");
                     testCaseMapper.insert(testCase);
                 }
@@ -188,70 +293,13 @@ public class E2eTestCaseServiceImpl implements IE2eTestCaseService {
                     testCase.setCaseName(file.getName());
                     testCase.setSpecFile(relativePath);
                     testCase.setCaseGroup(caseGroup);
+                    testCase.setContent(content);
                     testCase.setStatus("0");
                     testCaseMapper.insert(testCase);
                 }
             }
         } catch (IOException e) {
             log.error("读取spec文件失败: {}", file.getAbsolutePath(), e);
-        }
-    }
-
-    /**
-     * 读取spec文件内容
-     */
-    @Override
-    public String readSpecFileContent(String specFile) {
-        String basePath = e2eProperties.getResolvedBasePath();
-
-        // 尝试多种路径组合找到文件
-        Path[] candidates = {
-            Paths.get(basePath, specFile),                    // basePath/tests/xxx.spec.ts
-            Paths.get(basePath, "tests", specFile),           // basePath/tests/tests/xxx.spec.ts
-            Paths.get(basePath, "tests", specFile.replaceFirst("^tests/", ""))  // basePath/tests/xxx.spec.ts (去重)
-        };
-
-        for (Path filePath : candidates) {
-            if (Files.exists(filePath)) {
-                try {
-                    String content = Files.readString(filePath, StandardCharsets.UTF_8);
-                    log.info("读取spec文件成功: {}, 长度: {}", filePath, content.length());
-                    return content;
-                } catch (IOException e) {
-                    log.error("读取spec文件IO异常: {}", filePath, e);
-                    return "";
-                }
-            }
-        }
-
-        // 全部未找到，记录日志
-        log.warn("spec文件不存在，已尝试路径: basePath={}, specFile={}", basePath, specFile);
-        for (Path p : candidates) {
-            log.warn("  候选路径: {} (exists={})", p.toAbsolutePath(), Files.exists(p));
-        }
-        return "";
-    }
-
-    /**
-     * 保存spec文件内容
-     */
-    @Override
-    public void saveSpecFileContent(String specFile, String content) {
-        String basePath = e2eProperties.getResolvedBasePath();
-        // 先尝试找到已有文件的路径
-        Path filePath = Paths.get(basePath, specFile);
-        if (!Files.exists(filePath)) {
-            Path alt = Paths.get(basePath, "tests", specFile.replaceFirst("^tests/", ""));
-            if (Files.exists(alt.getParent()) || Files.exists(alt.getParent().getParent())) {
-                filePath = alt;
-            }
-        }
-        try {
-            Files.createDirectories(filePath.getParent());
-            Files.writeString(filePath, content, StandardCharsets.UTF_8);
-            log.info("保存spec文件成功: {}", filePath.toAbsolutePath());
-        } catch (IOException e) {
-            log.error("保存spec文件失败: {}", filePath, e);
         }
     }
 

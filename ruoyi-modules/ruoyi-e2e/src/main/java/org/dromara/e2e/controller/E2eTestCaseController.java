@@ -1,7 +1,6 @@
 package org.dromara.e2e.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.PageResult;
@@ -12,12 +11,12 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.redis.annotation.RepeatSubmit;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.e2e.domain.bo.E2eTestCaseBo;
+import org.dromara.e2e.domain.vo.E2eTestCaseHistoryVo;
 import org.dromara.e2e.domain.vo.E2eTestCaseVo;
 import org.dromara.e2e.service.IE2eTestCaseService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -47,15 +46,6 @@ public class E2eTestCaseController extends BaseController {
     @GetMapping(value = "/{caseId}")
     public R<E2eTestCaseVo> getInfo(@NotNull @PathVariable Long caseId) {
         return R.ok(testCaseService.selectTestCaseById(caseId));
-    }
-
-    /**
-     * 获取spec文件内容
-     */
-    @SaCheckPermission("e2e:testcase:query")
-    @GetMapping("/content")
-    public R<String> getContent(@RequestParam String specFile) {
-        return R.ok(testCaseService.readSpecFileContent(specFile));
     }
 
     /**
@@ -91,13 +81,33 @@ public class E2eTestCaseController extends BaseController {
     }
 
     /**
-     * 保存spec文件内容
+     * 仅保存用例代码内容（不影响名称等元数据）
      */
     @SaCheckPermission("e2e:testcase:edit")
-    @Log(title = "E2E测试用例-编辑文件", businessType = BusinessType.UPDATE)
+    @Log(title = "E2E测试用例-保存代码", businessType = BusinessType.UPDATE)
     @PutMapping("/content")
-    public R<Void> saveContent(@RequestParam String specFile, @RequestBody String content) {
-        testCaseService.saveSpecFileContent(specFile, content);
+    public R<Void> saveContent(@RequestParam Long caseId, @RequestBody String content) {
+        testCaseService.updateCaseContent(caseId, content);
+        return R.ok();
+    }
+
+    /**
+     * 查询用例历史版本
+     */
+    @SaCheckPermission("e2e:testcase:query")
+    @GetMapping("/history/{caseId}")
+    public R<List<E2eTestCaseHistoryVo>> getHistory(@PathVariable Long caseId) {
+        return R.ok(testCaseService.selectCaseHistory(caseId));
+    }
+
+    /**
+     * 回退到指定版本
+     */
+    @SaCheckPermission("e2e:testcase:edit")
+    @Log(title = "E2E测试用例-版本回退", businessType = BusinessType.UPDATE)
+    @PostMapping("/revert")
+    public R<Void> revert(@RequestParam Long caseId, @RequestParam Long historyId) {
+        testCaseService.revertToVersion(caseId, historyId);
         return R.ok();
     }
 

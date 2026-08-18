@@ -115,3 +115,23 @@ insert into sys_menu values(1761400000000000932, '报告删除', 176140000000000
 -- 5、日志持久化：为任务表新增日志内容字段
 -- ----------------------------
 ALTER TABLE e2e_test_task ADD COLUMN log_content TEXT COMMENT '执行日志内容';
+
+-- ----------------------------
+-- 6、用例内容字段
+-- ----------------------------
+ALTER TABLE e2e_test_case ADD COLUMN content TEXT COMMENT '用例代码内容';
+
+-- ----------------------------
+-- 7、用例历史版本表
+-- ----------------------------
+drop table if exists e2e_test_case_history;
+create table e2e_test_case_history (
+    history_id     bigint(20)    not null                   comment '历史ID',
+    case_id        bigint(20)    not null                   comment '用例ID',
+    content        text                                       comment '用例代码内容',
+    version        int           default 1                  comment '版本号',
+    create_by      bigint(20)    default null               comment '创建者',
+    create_time    datetime                                 comment '创建时间',
+    primary key (history_id),
+    key idx_case_id (case_id)
+) engine=innodb comment = '用例历史版本表';
