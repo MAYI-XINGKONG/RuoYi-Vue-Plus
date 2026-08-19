@@ -232,18 +232,31 @@ public class E2eTestTaskServiceImpl implements IE2eTestTaskService {
             testTaskMapper.updateById(errUpdate);
         } finally {
             // 清理临时spec文件
+            Set<Path> parentDirs = new LinkedHashSet<>();
             for (String tempFile : tempFiles) {
                 try {
                     Path p = Paths.get(tempFile);
                     if (p.toString().endsWith(".bak")) {
-                        // 恢复备份文件
                         Path original = p.resolveSibling(p.getFileName().toString().replace(".bak", ""));
                         Files.move(p, original, StandardCopyOption.REPLACE_EXISTING);
                     } else {
+                        parentDirs.add(p.getParent());
                         Files.deleteIfExists(p);
                     }
                 } catch (IOException e) {
                     log.debug("清理临时文件失败: {}", tempFile);
+                }
+            }
+            // 清理空的临时目录（从深到浅）
+            List<Path> sorted = new ArrayList<>(parentDirs);
+            sorted.sort(Comparator.comparingInt(Path::getNameCount).reversed());
+            for (Path dir : sorted) {
+                try {
+                    if (dir != null && Files.isDirectory(dir) && Files.list(dir).findAny().isEmpty()) {
+                        Files.deleteIfExists(dir);
+                        log.debug("已删除空临时目录: {}", dir);
+                    }
+                } catch (IOException ignored) {
                 }
             }
 
