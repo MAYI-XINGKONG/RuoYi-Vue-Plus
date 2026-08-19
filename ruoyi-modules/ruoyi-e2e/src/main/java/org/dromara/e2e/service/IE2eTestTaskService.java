@@ -69,4 +69,15 @@ public interface IE2eTestTaskService {
      * @param caseIds 用例ID列表
      */
     void executeTaskAsync(Long taskId, String browser, String headed, List<Long> caseIds);
+
+    /**
+     * 按分组创建并执行测试任务
+     *
+     * @param group    用例分组名
+     * @param taskName 任务名称
+     * @param browser  浏览器
+     * @param headed   是否有头模式
+     * @return 任务ID
+     */
+    Long createAndExecuteGroupTask(String group, String taskName, String browser, String headed);
 }

@@ -63,6 +63,20 @@ public class E2eTestTaskController extends BaseController {
     }
 
     /**
+     * 按分组执行测试任务
+     */
+    @SaCheckPermission("e2e:task:execute")
+    @Log(title = "E2E测试任务-分组执行", businessType = BusinessType.INSERT)
+    @RepeatSubmit()
+    @PostMapping("/executeGroup")
+    public R<Long> executeGroup(@RequestParam String group, @RequestParam String taskName,
+                                @RequestParam(defaultValue = "chromium") String browser,
+                                @RequestParam(defaultValue = "1") String headed) {
+        Long taskId = testTaskService.createAndExecuteGroupTask(group, taskName, browser, headed);
+        return R.ok(taskId);
+    }
+
+    /**
      * 停止测试任务
      */
     @SaCheckPermission("e2e:task:stop")

@@ -113,6 +113,8 @@ public class E2eTestTaskServiceImpl implements IE2eTestTaskService {
         String basePath = e2eProperties.getResolvedBasePath();
         List<String> logLines = new ArrayList<>();
         LOG_BUFFER.put(taskId, logLines);
+        // tempFiles提升到方法级别，确保finally能访问
+        List<String> tempFiles = new ArrayList<>();
 
         Path resultJsonPath = Paths.get(basePath, "test-results", "results.json");
         Path reportDir = Paths.get(basePath, "playwright-report");
@@ -125,18 +127,22 @@ public class E2eTestTaskServiceImpl implements IE2eTestTaskService {
             running.setStartTime(LocalDateTime.now());
             testTaskMapper.updateById(running);
 
-            // 将DB中的用例内容写入spec文件，确保执行时文件内容是最新的
-            List<String> tempFiles = new ArrayList<>();
+            // 将DB中的用例内容写入spec文件
             if (caseIds != null && !caseIds.isEmpty()) {
                 List<E2eTestCase> cases = testCaseMapper.selectBatchIds(caseIds);
                 for (E2eTestCase tc : cases) {
                     if (tc.getContent() != null && !tc.getContent().isEmpty()) {
-                        String resolvedBase = e2eProperties.getResolvedBasePath();
-                        Path filePath = Paths.get(resolvedBase, tc.getSpecFile());
+                        Path filePath = Paths.get(basePath, tc.getSpecFile());
                         Files.createDirectories(filePath.getParent());
+                        // 备份已有文件
+                        if (Files.exists(filePath)) {
+                            Path backup = filePath.resolveSibling(filePath.getFileName() + ".bak");
+                            Files.copy(filePath, backup, StandardCopyOption.REPLACE_EXISTING);
+                            tempFiles.add(backup.toString());
+                        }
                         Files.writeString(filePath, tc.getContent(), StandardCharsets.UTF_8);
                         tempFiles.add(filePath.toString());
-                        log.debug("已将用例内容写入文件: {}", filePath);
+                        pushLog(taskId, logLines, "已写入: " + tc.getSpecFile());
                     }
                 }
             }
@@ -225,6 +231,22 @@ public class E2eTestTaskServiceImpl implements IE2eTestTaskService {
             errUpdate.setErrorMsg(e.getMessage());
             testTaskMapper.updateById(errUpdate);
         } finally {
+            // 清理临时spec文件
+            for (String tempFile : tempFiles) {
+                try {
+                    Path p = Paths.get(tempFile);
+                    if (p.toString().endsWith(".bak")) {
+                        // 恢复备份文件
+                        Path original = p.resolveSibling(p.getFileName().toString().replace(".bak", ""));
+                        Files.move(p, original, StandardCopyOption.REPLACE_EXISTING);
+                    } else {
+                        Files.deleteIfExists(p);
+                    }
+                } catch (IOException e) {
+                    log.debug("清理临时文件失败: {}", tempFile);
+                }
+            }
+
             // Save logs to database
             List<String> logs = LOG_BUFFER.get(taskId);
             if (logs != null && !logs.isEmpty()) {
@@ -235,7 +257,6 @@ public class E2eTestTaskServiceImpl implements IE2eTestTaskService {
                 testTaskMapper.updateById(logUpdate);
             }
             RUNNING_PROCESSES.remove(taskId);
-            // 任务结束，关闭SSE连接
             e2eSseManager.complete(taskId);
         }
     }
@@ -582,6 +603,48 @@ public class E2eTestTaskServiceImpl implements IE2eTestTaskService {
             return Arrays.asList(task.getLogContent().split("\n"));
         }
         return Collections.emptyList();
+    }
+
+    @Override
+    public Long createAndExecuteGroupTask(String group, String taskName, String browser, String headed) {
+        // Query all active cases in the group
+        List<E2eTestCase> cases = testCaseMapper.lambda()
+            .eq(E2eTestCase::getCaseGroup, group)
+            .eq(E2eTestCase::getStatus, "0")
+            .list();
+
+        if (cases.isEmpty()) {
+            throw new RuntimeException("分组 '" + group + "' 下没有可用用例");
+        }
+
+        // Create task record
+        E2eTestTask task = new E2eTestTask();
+        task.setTaskName(taskName);
+        task.setBrowser(browser);
+        task.setHeaded(headed);
+        task.setStatus("0");
+        task.setTotalCases(cases.size());
+        task.setPassedCases(0);
+        task.setFailedCases(0);
+        task.setSkippedCases(0);
+        testTaskMapper.insert(task);
+        Long taskId = task.getTaskId();
+
+        // Save task-case relations
+        List<Long> caseIds = new ArrayList<>();
+        for (E2eTestCase tc : cases) {
+            E2eTestTaskCase taskCase = new E2eTestTaskCase();
+            taskCase.setTaskId(taskId);
+            taskCase.setCaseId(tc.getCaseId());
+            testTaskCaseMapper.insert(taskCase);
+            caseIds.add(tc.getCaseId());
+        }
+
+        // Execute async
+        applicationContext.getBean(IE2eTestTaskService.class)
+            .executeTaskAsync(taskId, browser, headed, caseIds);
+
+        return taskId;
     }
 
     private Wrapper<E2eTestTask> buildQueryWrapper(E2eTestTaskBo bo) {
